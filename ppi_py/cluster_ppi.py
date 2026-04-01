@@ -34,83 +34,6 @@ from .utils import (
 """
 
 
-def _get_grad_covariance_matrix(
-    grads,
-    grads_hat,
-    grads_hat_unlabeled,
-    group=None,
-    group_unlabeled=None,
-):
-    grads = reshape_to_2d(grads)
-    grads_hat = reshape_to_2d(grads_hat)
-    grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
-    n = grads.shape[0]
-    N = grads_hat_unlabeled.shape[0]
-    d = grads.shape[1]
-    grads_cent = grads - grads.mean(axis=0)
-    grads_hat_cent = grads_hat - grads_hat.mean(axis=0)
-    grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(axis=0)
-
-    combined_grads = np.hstack(
-        [
-            np.vstack([grads_cent, np.zeros_like(grads_hat_unlabeled)]),
-            np.vstack([grads_hat_cent, np.zeros_like(grads_hat_unlabeled)]),
-            np.vstack([np.zeros_like(grads), grads_hat_unlabeled_cent]),
-        ]
-    )
-    if (group is not None) and (group_unlabeled is not None):
-        combined_groups = np.concatenate([group, group_unlabeled])
-        covariance = cov_cluster(combined_grads, combined_groups)
-    else:
-        covariance = np.dot(combined_grads.T, combined_grads)
-    return covariance
-
-
-def _calc_lam_opt(
-    grads_cov,
-    inv_hessian,
-    n,
-    N,
-    coord=None,
-    clip=False,
-    optim_mode="overall",
-):
-    d = inv_hessian.shape[0]
-    vhat = inv_hessian if coord is None else inv_hessian[coord, :]
-    numerator_ = (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d]) / n**2 - (
-        grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
-    ) / n / N
-    denominator_ = 2 * (
-        grads_cov[d : (2 * d), d : (2 * d)] / n**2
-        + grads_cov[2 * d :, 2 * d :] / N**2
-        - (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)]) / n / N
-    )
-    if optim_mode == "overall":
-        num = (
-            np.trace(vhat @ numerator_ @ vhat)
-            if coord is None
-            else vhat @ numerator_ @ vhat
-        )
-        denom = (
-            np.trace(vhat @ denominator_ @ vhat)
-            if coord is None
-            else vhat @ denominator_ @ vhat
-        )
-        lam = num / denom
-        lam = lam.item()
-    elif optim_mode == "element":
-        num = np.diag(vhat @ numerator_ @ vhat)
-        denom = np.diag(vhat @ denominator_ @ vhat)
-        lam = num / denom
-    else:
-        raise ValueError(
-            "Invalid value for optim_mode. Must be either 'overall' or 'element'."
-        )
-    if clip:
-        lam = np.clip(lam, 0, 1)
-    return lam
-
-
 def _ppi_cov(
     grads_cov,
     inv_hessian,
@@ -127,8 +50,14 @@ def _ppi_cov(
     var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
     cov_rectifier_imputed = lam * (
         grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
-    ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
-    meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
+    ) - lam**2 * (
+        grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)]
+    )
+    meat = (
+        var_rectifier / n**2
+        + var_imputed / N**2
+        + cov_rectifier_imputed / n / N
+    )
     return inv_hessian @ meat @ inv_hessian
 
 
@@ -176,7 +105,9 @@ def ppi_mean_pointestimate_cluster(
     w_unlabeled = construct_weight_vector(N, w_unlabeled, vectorized=True)
 
     if lam is None:
-        ppi_pointest = (w_unlabeled * Yhat_unlabeled).mean(0) + (w * (Y - Yhat)).mean(0)
+        ppi_pointest = (w_unlabeled * Yhat_unlabeled).mean(0) + (
+            w * (Y - Yhat)
+        ).mean(0)
         grads = w * (Y - ppi_pointest)
         grads_hat = w * (Yhat - ppi_pointest)
         grads_hat_unlabeled = w_unlabeled * (Yhat_unlabeled - ppi_pointest)
@@ -261,7 +192,7 @@ def ppi_mean_ci_cluster(
             w=w,
             w_unlabeled=w_unlabeled,
             group=group,
-            group_unlabeled = group_unlabeled,
+            group_unlabeled=group_unlabeled,
         )
         grads = w * (Y - ppi_pointest)
         grads_hat = w * (Yhat - ppi_pointest)
@@ -312,10 +243,8 @@ def ppi_mean_ci_cluster(
     grads_cov = _get_grad_covariance_matrix(
         grads, grads_hat, grads_hat_unlabeled, group, group_unlabeled
     )
-    
-    se = np.sqrt(np.diag(_ppi_cov(
-        grads_cov, inv_hessian, lam, n, N
-    )))
+
+    se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam, n, N)))
 
     return _zconfint_generic(
         ppi_pointest,
@@ -324,3 +253,83 @@ def ppi_mean_ci_cluster(
         alternative,
     )
 
+
+def _get_grad_covariance_matrix(
+    grads,
+    grads_hat,
+    grads_hat_unlabeled,
+    group=None,
+    group_unlabeled=None,
+):
+    grads = reshape_to_2d(grads)
+    grads_hat = reshape_to_2d(grads_hat)
+    grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
+    n = grads.shape[0]
+    N = grads_hat_unlabeled.shape[0]
+    d = grads.shape[1]
+    grads_cent = grads - grads.mean(axis=0)
+    grads_hat_cent = grads_hat - grads_hat.mean(axis=0)
+    grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(
+        axis=0
+    )
+
+    combined_grads = np.hstack(
+        [
+            np.vstack([grads_cent, np.zeros_like(grads_hat_unlabeled)]),
+            np.vstack([grads_hat_cent, np.zeros_like(grads_hat_unlabeled)]),
+            np.vstack([np.zeros_like(grads), grads_hat_unlabeled_cent]),
+        ]
+    )
+    if (group is not None) and (group_unlabeled is not None):
+        combined_groups = np.concatenate([group, group_unlabeled])
+        covariance = cov_cluster(combined_grads, combined_groups)
+    else:
+        covariance = np.dot(combined_grads.T, combined_grads)
+    return covariance
+
+
+def _calc_lam_opt(
+    grads_cov,
+    inv_hessian,
+    n,
+    N,
+    coord=None,
+    clip=False,
+    optim_mode="overall",
+):
+    d = inv_hessian.shape[0]
+    vhat = inv_hessian if coord is None else inv_hessian[coord, :]
+    numerator_ = (
+        grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d]
+    ) / n**2 - (grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]) / n / N
+    denominator_ = 2 * (
+        grads_cov[d : (2 * d), d : (2 * d)] / n**2
+        + grads_cov[2 * d :, 2 * d :] / N**2
+        - (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
+        / n
+        / N
+    )
+    if optim_mode == "overall":
+        num = (
+            np.trace(vhat @ numerator_ @ vhat)
+            if coord is None
+            else vhat @ numerator_ @ vhat
+        )
+        denom = (
+            np.trace(vhat @ denominator_ @ vhat)
+            if coord is None
+            else vhat @ denominator_ @ vhat
+        )
+        lam = num / denom
+        lam = lam.item()
+    elif optim_mode == "element":
+        num = np.diag(vhat @ numerator_ @ vhat)
+        denom = np.diag(vhat @ denominator_ @ vhat)
+        lam = num / denom
+    else:
+        raise ValueError(
+            "Invalid value for optim_mode. Must be either 'overall' or 'element'."
+        )
+    if clip:
+        lam = np.clip(lam, 0, 1)
+    return lam

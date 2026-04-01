@@ -21,7 +21,7 @@ def generate_cluster(
     rho,
     ppi_correlation,
     seed,
-    covariance_type = "equi"
+    covariance_type="equi",
 ):
     rng = np.random.default_rng(seed)
     cluster_size = rng.poisson(ave_cluster_size) + 1
@@ -31,14 +31,13 @@ def generate_cluster(
         )
     elif covariance_type == "AR":
         sigma = rho ** np.abs(
-        np.arange(cluster_size)[:, None] - np.arange(cluster_size)[None:,]
-    )
+            np.arange(cluster_size)[:, None] - np.arange(cluster_size)[None:,]
+        )
     else:
         raise ValueError(
             "Invalid value for covariance_type. Must be either 'equi' or 'AR'."
         )
-    
-    
+
     mean = np.full(cluster_size, theta)
 
     Y = rng.multivariate_normal(mean=mean, cov=sigma, size=1)
@@ -86,7 +85,7 @@ def generate_data_clustered(
             rho,
             ppi_correlation,
             seed=seed + i,
-            covariance_type = covariance_type
+            covariance_type=covariance_type,
         )
         Ys.append(data["Y"])
         Yhats.append(data["Yhat"])
@@ -256,7 +255,7 @@ def test_ppi_mean_cluster_coverage():
             ppi_correlation=ppi_correlation,
             num_clusters=num_clusters,
             seed=seed,
-            covariance_type=covariance_type
+            covariance_type=covariance_type,
         )
         ci_cluster = ppi_mean_ci_cluster(
             Y=data["Y"],

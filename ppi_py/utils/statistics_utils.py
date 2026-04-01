@@ -154,6 +154,7 @@ def linfty_binom(N, K, alpha, qhat):
         epsilon = np.maximum(epsilon, np.abs(bci - qhat[k]).max())
     return epsilon
 
+
 def cov_cluster(x, group):
     """Computes a cluster covariance estimate.
 
@@ -163,7 +164,7 @@ def cov_cluster(x, group):
     Args:
         x (ndarray): Observations, shape (n, d).
         group (ndarray or None): Cluster ids, shape (n,)
-    
+
     Returns:
         cov: Covariance estimate, shape (d,d).
     """
