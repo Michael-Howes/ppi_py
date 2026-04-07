@@ -399,6 +399,8 @@ def ppi_ols_ci_cluster(
         coord=coord,
         w=w,
         w_unlabeled=w_unlabeled,
+        group=group,
+        group_unlabeled=group_unlabeled
     )
     grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
         ppi_pointest,
@@ -437,6 +439,8 @@ def ppi_ols_ci_cluster(
             coord=coord,
             w=w,
             w_unlabeled=w_unlabeled,
+            group=group,
+            group_unlabeled=group_unlabeled
         )
 
     se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam, n, N)))
