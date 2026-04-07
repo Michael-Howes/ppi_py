@@ -50,14 +50,8 @@ def _ppi_cov(
     var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
     cov_rectifier_imputed = lam * (
         grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
-    ) - lam**2 * (
-        grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)]
-    )
-    meat = (
-        var_rectifier / n**2
-        + var_imputed / N**2
-        + cov_rectifier_imputed / n / N
-    )
+    ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
+    meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
     return inv_hessian @ meat @ inv_hessian
 
 
@@ -105,9 +99,7 @@ def ppi_mean_pointestimate_cluster(
     w_unlabeled = construct_weight_vector(N, w_unlabeled, vectorized=True)
 
     if lam is None:
-        ppi_pointest = (w_unlabeled * Yhat_unlabeled).mean(0) + (
-            w * (Y - Yhat)
-        ).mean(0)
+        ppi_pointest = (w_unlabeled * Yhat_unlabeled).mean(0) + (w * (Y - Yhat)).mean(0)
         grads = w * (Y - ppi_pointest)
         grads_hat = w * (Yhat - ppi_pointest)
         grads_hat_unlabeled = w_unlabeled * (Yhat_unlabeled - ppi_pointest)
@@ -254,6 +246,209 @@ def ppi_mean_ci_cluster(
     )
 
 
+"""
+    OLS
+"""
+
+
+def ppi_ols_pointestimate_cluster(
+    X,
+    Y,
+    Yhat,
+    X_unlabeled,
+    Yhat_unlabeled,
+    lam=None,
+    coord=None,
+    w=None,
+    w_unlabeled=None,
+    group=None,
+    group_unlabeled=None,
+):
+    """Computes the prediction-powered point estimate of the OLS coefficients.
+
+    Args:
+        X (ndarray): Covariates corresponding to the gold-standard labels.
+        Y (ndarray): Gold-standard labels.
+        Yhat (ndarray): Predictions corresponding to the gold-standard labels.
+        X_unlabeled (ndarray): Covariates corresponding to the unlabeled data.
+        Yhat_unlabeled (ndarray): Predictions corresponding to the unlabeled data.
+        lam (float, optional): Power-tuning parameter (see `[ADZ23] <https://arxiv.org/abs/2311.01453>`__). The default value `None` will estimate the optimal value from data. Setting `lam=1` recovers PPI with no power tuning, and setting `lam=0` recovers the classical point estimate.
+        coord (int, optional): Coordinate for which to optimize `lam`. If `None`, it optimizes the total variance over all coordinates. Must be in {1, ..., d} where d is the shape of the estimand.
+        w (ndarray, optional): Sample weights for the labeled data set.
+        w_unlabeled (ndarray, optional): Sample weights for the unlabeled data set.
+
+    Returns:
+        ndarray: Prediction-powered point estimate of the OLS coefficients.
+
+    Notes:
+        `[ADZ23] <https://arxiv.org/abs/2311.01453>`__ A. N. Angelopoulos, J. C. Duchi, and T. Zrnic. PPI++: Efficient Prediction Powered Inference. arxiv:2311.01453, 2023.
+    """
+    n = Y.shape[0]
+    d = X.shape[1]
+    N = Yhat_unlabeled.shape[0]
+    w = np.ones(n) if w is None else w / np.sum(w) * n
+    w_unlabeled = (
+        np.ones(N) if w_unlabeled is None else w_unlabeled / np.sum(w_unlabeled) * N
+    )
+    use_unlabeled = lam != 0
+
+    imputed_theta = (
+        ppi._wls(X_unlabeled, Yhat_unlabeled, w=w_unlabeled)
+        if lam is None
+        else ppi._wls(X_unlabeled, lam * Yhat_unlabeled, w=w_unlabeled)
+    )
+    rectifier = (
+        ppi._wls(X, Y - Yhat, w=w) if lam is None else ppi._wls(X, Y - lam * Yhat, w=w)
+    )
+    ppi_pointest = imputed_theta + rectifier
+
+    if lam is None:
+        grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
+            ppi_pointest,
+            X.astype(float),
+            Y,
+            Yhat,
+            X_unlabeled.astype(float),
+            Yhat_unlabeled,
+            w=w,
+            w_unlabeled=w_unlabeled,
+            use_unlabeled=use_unlabeled,
+        )
+        grads_cov = _get_grad_covariance_matrix(
+            grads=grads,
+            grads_hat=grads_hat,
+            grads_hat_unlabeled=grads_hat_unlabeled,
+            group=group,
+            group_unlabeled=group_unlabeled,
+        )
+        lam = _calc_lam_opt(
+            grads_cov,
+            inv_hessian,
+            n,
+            N,
+            coord=coord,
+            clip=True,
+        )
+        return ppi_ols_pointestimate_cluster(
+            X,
+            Y,
+            Yhat,
+            X_unlabeled,
+            Yhat_unlabeled,
+            lam=lam,
+            coord=coord,
+            w=w,
+            w_unlabeled=w_unlabeled,
+        )
+    else:
+        return ppi_pointest
+
+
+def ppi_ols_ci_cluster(
+    X,
+    Y,
+    Yhat,
+    X_unlabeled,
+    Yhat_unlabeled,
+    alpha=0.1,
+    alternative="two-sided",
+    lam=None,
+    coord=None,
+    w=None,
+    w_unlabeled=None,
+    group=None,
+    group_unlabeled=None,
+):
+    """Computes the prediction-powered confidence interval for the OLS coefficients using the PPI++ algorithm from `[ADZ23] <https://arxiv.org/abs/2311.01453>`__.
+
+    Args:
+        X (ndarray): Covariates corresponding to the gold-standard labels.
+        Y (ndarray): Gold-standard labels.
+        Yhat (ndarray): Predictions corresponding to the gold-standard labels.
+        X_unlabeled (ndarray): Covariates corresponding to the unlabeled data.
+        Yhat_unlabeled (ndarray): Predictions corresponding to the unlabeled data.
+        alpha (float, optional): Error level; the confidence interval will target a coverage of 1 - alpha. Must be in the range (0, 1).
+        alternative (str, optional): Alternative hypothesis, either 'two-sided', 'larger' or 'smaller'.
+        lam (float, optional): Power-tuning parameter (see `[ADZ23] <https://arxiv.org/abs/2311.01453>`__). The default value `None` will estimate the optimal value from data. Setting `lam=1` recovers PPI with no power tuning, and setting `lam=0` recovers the classical CLT interval.
+        coord (int, optional): Coordinate for which to optimize `lam`. If `None`, it optimizes the total variance over all coordinates. Must be in {1, ..., d} where d is the shape of the estimand.
+        w (ndarray, optional): Sample weights for the labeled data set.
+        w_unlabeled (ndarray, optional): Sample weights for the unlabeled data set.
+
+    Returns:
+        tuple: Lower and upper bounds of the prediction-powered confidence interval for the OLS coefficients.
+
+    Notes:
+        `[ADZ23] <https://arxiv.org/abs/2311.01453>`__ A. N. Angelopoulos, J. C. Duchi, and T. Zrnic. PPI++: Efficient Prediction Powered Inference. arxiv:2311.01453, 2023.
+    """
+    n = Y.shape[0]
+    d = X.shape[1]
+    N = Yhat_unlabeled.shape[0]
+    w = np.ones(n) if w is None else w / w.sum() * n
+    w_unlabeled = (
+        np.ones(N) if w_unlabeled is None else w_unlabeled / w_unlabeled.sum() * N
+    )
+    use_unlabeled = lam != 0  # If lam is 0, revert to classical estimation.
+
+    ppi_pointest = ppi_ols_pointestimate_cluster(
+        X,
+        Y,
+        Yhat,
+        X_unlabeled,
+        Yhat_unlabeled,
+        lam=lam,
+        coord=coord,
+        w=w,
+        w_unlabeled=w_unlabeled,
+    )
+    grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
+        ppi_pointest,
+        X.astype(float),
+        Y,
+        Yhat,
+        X_unlabeled.astype(float),
+        Yhat_unlabeled,
+        w=w,
+        w_unlabeled=w_unlabeled,
+        use_unlabeled=use_unlabeled,
+    )
+    grads_cov = _get_grad_covariance_matrix(
+        grads=grads,
+        grads_hat=grads_hat,
+        grads_hat_unlabeled=grads_hat_unlabeled,
+        group=group,
+        group_unlabeled=group_unlabeled,
+    )
+    if lam is None:
+        lam = _calc_lam_opt(
+            grads_cov,
+            inv_hessian,
+            n,
+            N,
+            coord=coord,
+            clip=True,
+        )
+        return ppi_ols_ci_cluster(
+            X,
+            Y,
+            Yhat,
+            X_unlabeled,
+            Yhat_unlabeled,
+            lam=lam,
+            coord=coord,
+            w=w,
+            w_unlabeled=w_unlabeled,
+        )
+
+    se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam, n, N)))
+
+    return _zconfint_generic(
+        ppi_pointest,
+        se,
+        alpha,
+        alternative,
+    )
+
+
 def _get_grad_covariance_matrix(
     grads,
     grads_hat,
@@ -264,14 +459,9 @@ def _get_grad_covariance_matrix(
     grads = reshape_to_2d(grads)
     grads_hat = reshape_to_2d(grads_hat)
     grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
-    n = grads.shape[0]
-    N = grads_hat_unlabeled.shape[0]
-    d = grads.shape[1]
     grads_cent = grads - grads.mean(axis=0)
     grads_hat_cent = grads_hat - grads_hat.mean(axis=0)
-    grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(
-        axis=0
-    )
+    grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(axis=0)
 
     combined_grads = np.hstack(
         [
@@ -299,15 +489,13 @@ def _calc_lam_opt(
 ):
     d = inv_hessian.shape[0]
     vhat = inv_hessian if coord is None else inv_hessian[coord, :]
-    numerator_ = (
-        grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d]
-    ) / n**2 - (grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]) / n / N
+    numerator_ = (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d]) / n**2 - (
+        grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
+    ) / n / N
     denominator_ = 2 * (
         grads_cov[d : (2 * d), d : (2 * d)] / n**2
         + grads_cov[2 * d :, 2 * d :] / N**2
-        - (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
-        / n
-        / N
+        - (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)]) / n / N
     )
     if optim_mode == "overall":
         num = (
@@ -333,3 +521,24 @@ def _calc_lam_opt(
     if clip:
         lam = np.clip(lam, 0, 1)
     return lam
+
+
+def _ppi_cov(
+    grads_cov,
+    inv_hessian,
+    lam,
+    n,
+    N,
+):
+    d = inv_hessian.shape[0]
+    var_rectifier = (
+        grads_cov[:d, :d]
+        + lam**2 * grads_cov[d : (2 * d), d : (2 * d)]
+        - lam * (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d])
+    )
+    var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
+    cov_rectifier_imputed = lam * (
+        grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
+    ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
+    meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
+    return inv_hessian @ meat @ inv_hessian
