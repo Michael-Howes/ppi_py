@@ -402,8 +402,23 @@ def ppi_ols_ci_cluster(
         group=group,
         group_unlabeled=group_unlabeled
     )
+
+    pe1 = ppi_ols_pointestimate_cluster(
+        X,
+        Y,
+        Yhat,
+        X_unlabeled,
+        Yhat_unlabeled,
+        lam=1,
+        coord=coord,
+        w=w,
+        w_unlabeled=w_unlabeled,
+        group=group,
+        group_unlabeled=group_unlabeled
+    )
+
     grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
-        ppi_pointest,
+        pe1,
         X.astype(float),
         Y,
         Yhat,
