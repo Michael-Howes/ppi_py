@@ -208,6 +208,7 @@ def ppi_mean_ci_cluster(
             Yhat_unlabeled,
             alpha=alpha,
             lam=lam,
+            alternative=alternative,
             coord=coord,
             w=w,
             w_unlabeled=w_unlabeled,
@@ -403,22 +404,8 @@ def ppi_ols_ci_cluster(
         group_unlabeled=group_unlabeled
     )
 
-    pe1 = ppi_ols_pointestimate_cluster(
-        X,
-        Y,
-        Yhat,
-        X_unlabeled,
-        Yhat_unlabeled,
-        lam=1,
-        coord=coord,
-        w=w,
-        w_unlabeled=w_unlabeled,
-        group=group,
-        group_unlabeled=group_unlabeled
-    )
-
     grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
-        pe1,
+        ppi_pointest,
         X.astype(float),
         Y,
         Yhat,
@@ -445,11 +432,13 @@ def ppi_ols_ci_cluster(
             clip=True,
         )
         return ppi_ols_ci_cluster(
-            X,
-            Y,
-            Yhat,
-            X_unlabeled,
-            Yhat_unlabeled,
+            X=X,
+            Y=Y,
+            Yhat=Yhat,
+            X_unlabeled=X_unlabeled,
+            Yhat_unlabeled=Yhat_unlabeled,
+            alpha=alpha,
+            alternative=alternative,
             lam=lam,
             coord=coord,
             w=w,
