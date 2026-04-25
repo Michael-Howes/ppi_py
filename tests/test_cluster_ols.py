@@ -236,7 +236,7 @@ def test_ppi_ols_cluster_coverage():
     seed = 0
     epsilon_cluster = 0.05
     epsilon_ppi = 0.1
-    alpha = 0.1
+    alphas = np.array([0.05, 0.1, 0.2])
     reps = 1000
 
     d = 3
@@ -250,8 +250,8 @@ def test_ppi_ols_cluster_coverage():
     num_clusters = 1000
     covariance_type = "equi"
 
-    includeds_cluster = np.zeros(d)
-    includeds_ppi = np.zeros(d)
+    includeds_cluster = np.zeros((d, len(alphas)))
+    includeds_ppi = np.zeros((d, len(alphas)))
 
     for i in range(reps):
         seed += num_clusters
@@ -275,7 +275,7 @@ def test_ppi_ols_cluster_coverage():
             Yhat_unlabeled=data["Yhat_unlabeled"],
             group=data["group"],
             group_unlabeled=data["group_unlabeled"],
-            alpha=alpha,
+            alpha=alphas,
         )
 
     
@@ -287,7 +287,7 @@ def test_ppi_ols_cluster_coverage():
             Yhat=data["Yhat"],
             X_unlabeled=data["X_unlabeled"],
             Yhat_unlabeled=data["Yhat_unlabeled"],
-            alpha=alpha,
+            alpha=alphas,
         )
 
         includeds_ppi += (ci_ppi[0] <= theta) * (ci_ppi[1] >= theta)
@@ -295,7 +295,7 @@ def test_ppi_ols_cluster_coverage():
     # Cluster ci has correct coverage.
     print(includeds_cluster / reps)
     print(includeds_ppi / reps)
-    assert (np.abs(includeds_cluster / reps - (1 - alpha)) <= epsilon_cluster).all()
+    assert (np.abs(includeds_cluster / reps - (1 - alphas)) <= epsilon_cluster).all()
 
     # Regular ppi does not have correct coverage for clustered data.
-    assert (includeds_ppi / reps < (1 - alpha) - epsilon_ppi).all()
+    assert (includeds_ppi / reps < (1 - alphas) - epsilon_ppi).all()
