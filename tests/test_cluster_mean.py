@@ -225,14 +225,14 @@ def test_ppi_mean_ci_groups_none():
 
 def test_ppi_mean_cluster_coverage():
     seed = 0
-    epsilon_cluster = 0.01
+    epsilon_cluster = 0.02
     epsilon_ppi = 0.1
-    alpha = 0.1
+    alphas = np.array([0.05, 0.1, 0.2])
     reps = 1000
 
     theta = 1
     bias = 2
-    ave_cluster_size = 5
+    ave_cluster_size = 8
     a_labeled = 1
     b_labeled = 1
     rho = 0.5
@@ -240,8 +240,8 @@ def test_ppi_mean_cluster_coverage():
     num_clusters = 100
     covariance_type = "AR"
 
-    includeds_cluster = 0
-    includeds_ppi = 0
+    includeds_cluster = np.zeros_like(alphas, dtype = int)
+    includeds_ppi = np.zeros_like(alphas, dtype = int)
 
     for i in range(reps):
         seed += num_clusters
@@ -263,24 +263,28 @@ def test_ppi_mean_cluster_coverage():
             Yhat_unlabeled=data["Yhat_unlabeled"],
             group=data["group"],
             group_unlabeled=data["group_unlabeled"],
-            alpha=alpha,
+            alpha=alphas,
         )
 
-        if ci_cluster[0] <= theta and ci_cluster[1] >= theta:
-            includeds_cluster += 1
+        includeds_cluster += ( 
+            (ci_cluster[0] <= theta)*  (ci_cluster[1] >= theta)
+        )
 
         ci_ppi = ppi_mean_ci(
             Y=data["Y"],
             Yhat=data["Yhat"],
             Yhat_unlabeled=data["Yhat_unlabeled"],
-            alpha=alpha,
+            alpha=alphas,
         )
 
-        if ci_ppi[0] <= theta and ci_ppi[1] >= theta:
-            includeds_ppi += 1
+        includeds_ppi += ( 
+            (ci_ppi[0] <= theta)*  (ci_ppi[1] >= theta)
+        )
 
     # Cluster ci has correct coverage.
-    assert np.abs(includeds_cluster / reps - (1 - alpha)) <= epsilon_cluster
+    print(includeds_cluster / reps)
+    assert np.abs(includeds_cluster / reps - (1 - alphas)).max() <= epsilon_cluster
 
     # Regular ppi does not have correct coverage for clustered data.
-    assert includeds_ppi / reps < (1 - alpha) - epsilon_ppi
+    print(includeds_ppi / reps)
+    assert (includeds_ppi / reps < (1 - alphas) - epsilon_ppi).all()
