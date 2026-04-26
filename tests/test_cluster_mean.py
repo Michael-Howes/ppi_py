@@ -226,7 +226,7 @@ def test_ppi_mean_ci_groups_none():
 def test_ppi_mean_cluster_coverage():
     seed = 1234
     epsilon_cluster = 0.02
-    epsilon_ppi = 0.1
+    error_ppi = 0.1
     alphas = np.array([0.05, 0.1, 0.2])
     reps = 1000
 
@@ -287,5 +287,5 @@ def test_ppi_mean_cluster_coverage():
 
     # Regular ppi does not have correct coverage for clustered data.
     print(includeds_ppi / reps)
-    assert (includeds_ppi / reps < (1 - alphas) - epsilon_ppi).all()
+    assert (includeds_ppi / reps < (1 - alphas) - error_ppi).all()
 

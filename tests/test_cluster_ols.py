@@ -154,13 +154,13 @@ def test_ppi_ols_cluster():
         group=data["group"],
         group_unlabeled=data["group_unlabeled"],
     )
-
-    assert np.abs(theta - theta_hat).max() < epsilon
+    print(theta_hat)
+    assert np.abs(theta - theta_hat).max() <= epsilon
 
 def test_ppi_ols_cluster_groups_none():
     seed = 0
     rng = np.random.default_rng(seed)
-    epsilon = 0.05
+    epsilon = 0.001
 
     d = 3
     n = 100
@@ -187,13 +187,14 @@ def test_ppi_ols_cluster_groups_none():
     theta_cluster = ppi_ols_pointestimate_cluster(
         X, Y, Yhat, X_unlabeled, Yhat_unlabeled
     )
-
-    assert np.abs(theta_ppi - theta_cluster).max() < epsilon
+    print(theta_ppi)
+    print(theta_cluster)
+    assert np.abs(theta_ppi - theta_cluster).max() <= epsilon
 
 def test_ppi_ols_ci_groups_none():
     seed = 0
     rng = np.random.default_rng(seed)
-    epsilon = 0.05
+    epsilon = 0.01
 
     d = 3
     n = 100
@@ -228,14 +229,15 @@ def test_ppi_ols_ci_groups_none():
         X_unlabeled,
         Yhat_unlabeled,
     )
-
-    assert np.abs(ci_ppi[0] - ci_cluster[0]).max() < epsilon
-    assert np.abs(ci_ppi[1] - ci_cluster[1]).max() < epsilon
+    print(ci_ppi)
+    print(ci_cluster)
+    assert np.abs(ci_ppi[0] - ci_cluster[0]).max() <= epsilon
+    assert np.abs(ci_ppi[1] - ci_cluster[1]).max() <= epsilon
 
 def test_ppi_ols_cluster_coverage():
     seed = 0
-    epsilon_cluster = 0.05
-    epsilon_ppi = 0.1
+    epsilon_cluster = 0.01
+    error_ppi = 0.1
     alphas = np.array([0.05, 0.1, 0.2])
     reps = 1000
 
@@ -298,4 +300,4 @@ def test_ppi_ols_cluster_coverage():
     assert (np.abs(includeds_cluster / reps - (1 - alphas)) <= epsilon_cluster).all()
 
     # Regular ppi does not have correct coverage for clustered data.
-    assert (includeds_ppi / reps < (1 - alphas) - epsilon_ppi).all()
+    assert (includeds_ppi / reps < (1 - alphas) - error_ppi).all()

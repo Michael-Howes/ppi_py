@@ -443,7 +443,7 @@ def ppi_ols_ci_cluster(
             group_unlabeled=group_unlabeled
         )
 
-    se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam, n, N)))
+    se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam))) / n
 
     return _zconfint_generic(
         ppi_pointest,
@@ -480,6 +480,38 @@ def ppi_ols_ci_cluster(
 #     else:
 #         covariance = np.dot(combined_grads.T, combined_grads)
 #     return covariance
+
+# def _get_grad_covariance_matrix(
+#     grads,
+#     grads_hat,
+#     grads_hat_unlabeled,
+#     group=None,
+#     group_unlabeled=None,
+# ):
+#     n = len(grads)
+#     N = len(grads_hat_unlabeled)
+#     r = n/N
+    
+#     grads = reshape_to_2d(grads)
+#     grads_hat = reshape_to_2d(grads_hat)
+#     grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
+#     # grads_cent = grads - grads.mean(axis=0)
+#     # grads_hat_cent = grads_hat - grads_hat.mean(axis=0)
+#     # grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(axis=0)
+
+#     combined_grads = np.hstack(
+#         [
+#             np.vstack([grads, np.zeros_like(grads_hat_unlabeled)]),
+#             np.vstack([grads_hat, -r * grads_hat_unlabeled]),
+#         ]
+#     )
+#     if (group is not None) and (group_unlabeled is not None):
+#         combined_groups = np.concatenate([group, group_unlabeled])
+#         covariance = cov_cluster(combined_grads, combined_groups)
+#     else:
+#         covariance = np.cov(combined_grads)
+#     return covariance
+
 
 def _get_grad_covariance_matrix(
     grads,
