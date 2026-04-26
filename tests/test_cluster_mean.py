@@ -140,12 +140,12 @@ def test_ppi_mean_pointestimate_cluster():
 
 
 def test_calc_lam_opt():
-    seed = 0
+    seed = 1234
     rng = np.random.default_rng(seed)
-    epsilon = 0.05
+    epsilon = 0.001
 
     n = 300
-    N = 3000
+    N = 300
     Y = rng.normal(0, 1, n)
     Yhat = Y + rng.normal(2, 1, n)
     Yhat_unlabeled = rng.normal(2, 2**0.5, N)
@@ -164,26 +164,25 @@ def test_calc_lam_opt():
     grads_cov = _get_grad_covariance_matrix(
         grads, grads_hat, grads_hat_unlabeled, group=None, group_unlabeled=None
     )
+    print(grads_cov)
     lam_cluster = _calc_lam_opt(
         grads_cov,
         inv_hessian,
-        n,
-        N,
     )
-
-    assert np.abs(lam_ppi - lam_cluster) < epsilon
+    print(lam_ppi, lam_cluster)
+    assert np.abs(lam_ppi - lam_cluster) <= epsilon
 
 
 def test_ppi_mean_pointestimate_cluster_groups_none():
     seed = 0
     rng = np.random.default_rng(seed)
-    epsilon = 0.05
+    epsilon = 0.01
 
     n = 200
     N = 2000
-    Y = rng.normal(0, 1, n)
+    Y = rng.normal(1, 1, n)
     Yhat = Y + rng.normal(2, 1, n)
-    Yhat_unlabeled = rng.normal(2, 2**0.5, N)
+    Yhat_unlabeled = rng.normal(3, 2**0.5, N)
 
     theta_ppi = ppi_mean_pointestimate(
         Y,
@@ -192,20 +191,20 @@ def test_ppi_mean_pointestimate_cluster_groups_none():
     )
 
     theta_ppi_cluster = ppi_mean_pointestimate_cluster(Y, Yhat, Yhat_unlabeled)
-
-    assert np.abs(theta_ppi - theta_ppi_cluster) < epsilon
+    print(theta_ppi, theta_ppi_cluster)
+    assert np.abs(theta_ppi - theta_ppi_cluster) <= epsilon
 
 
 def test_ppi_mean_ci_groups_none():
     seed = 0
     rng = np.random.default_rng(seed)
-    epsilon = 0.05
+    epsilon = 0.01
 
     n = 200
     N = 2000
-    Y = rng.normal(0, 1, n)
+    Y = rng.normal(1, 1, n)
     Yhat = Y + rng.normal(2, 1, n)
-    Yhat_unlabeled = rng.normal(2, 2**0.5, N)
+    Yhat_unlabeled = rng.normal(3, 2**0.5, N)
 
     ci_ppi = ppi_mean_ci(
         Y,
@@ -218,13 +217,14 @@ def test_ppi_mean_ci_groups_none():
         Yhat,
         Yhat_unlabeled,
     )
-
+    print("PPI:", ci_ppi)
+    print("Cluster:", ci_cluster)
     assert np.abs(ci_ppi[0] - ci_cluster[0]) < epsilon
     assert np.abs(ci_ppi[1] - ci_cluster[1]) < epsilon
 
 
 def test_ppi_mean_cluster_coverage():
-    seed = 0
+    seed = 1234
     epsilon_cluster = 0.02
     epsilon_ppi = 0.1
     alphas = np.array([0.05, 0.1, 0.2])
@@ -237,7 +237,7 @@ def test_ppi_mean_cluster_coverage():
     b_labeled = 1
     rho = 0.5
     ppi_correlation = 0.5
-    num_clusters = 100
+    num_clusters = 400
     covariance_type = "AR"
 
     includeds_cluster = np.zeros_like(alphas, dtype = int)
@@ -288,3 +288,4 @@ def test_ppi_mean_cluster_coverage():
     # Regular ppi does not have correct coverage for clustered data.
     print(includeds_ppi / reps)
     assert (includeds_ppi / reps < (1 - alphas) - epsilon_ppi).all()
+

@@ -32,27 +32,34 @@ from .utils import (
     MEAN ESTIMATION
 
 """
-
-
 def _ppi_cov(
     grads_cov,
     inv_hessian,
     lam,
-    n,
-    N,
 ):
     d = inv_hessian.shape[0]
-    var_rectifier = (
-        grads_cov[:d, :d]
-        + lam**2 * grads_cov[d : (2 * d), d : (2 * d)]
-        - lam * (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d])
-    )
-    var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
-    cov_rectifier_imputed = lam * (
-        grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
-    ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
-    meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
+    meat = grads_cov[:d,:d] - lam * (grads_cov[:d,d:] + grads_cov[d:,:d]) + lam**2 * grads_cov[d:, d:]
     return inv_hessian @ meat @ inv_hessian
+
+# def _ppi_cov(
+#     grads_cov,
+#     inv_hessian,
+#     lam,
+#     n,
+#     N,
+# ):
+#     d = inv_hessian.shape[0]
+#     var_rectifier = (
+#         grads_cov[:d, :d]
+#         + lam**2 * grads_cov[d : (2 * d), d : (2 * d)]
+#         - lam * (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d])
+#     )
+#     var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
+#     cov_rectifier_imputed = lam * (
+#         grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
+#     ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
+#     meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
+#     return inv_hessian @ meat @ inv_hessian
 
 
 def ppi_mean_pointestimate_cluster(
@@ -110,10 +117,7 @@ def ppi_mean_pointestimate_cluster(
         lam = _calc_lam_opt(
             grads_cov,
             inv_hessian,
-            n,
-            N,
             coord=coord,
-            clip=True,
             optim_mode=lam_optim_mode,
         )
         return ppi.ppi_mean_pointestimate(
@@ -196,10 +200,7 @@ def ppi_mean_ci_cluster(
         lam = _calc_lam_opt(
             grads_cov,
             inv_hessian,
-            n,
-            N,
             coord=coord,
-            clip=True,
             optim_mode=lam_optim_mode,
         )
         return ppi_mean_ci_cluster(
@@ -237,7 +238,7 @@ def ppi_mean_ci_cluster(
         grads, grads_hat, grads_hat_unlabeled, group, group_unlabeled
     )
 
-    se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam, n, N)))
+    se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam))) / n
 
     return _zconfint_generic(
         ppi_pointest,
@@ -325,10 +326,7 @@ def ppi_ols_pointestimate_cluster(
         lam = _calc_lam_opt(
             grads_cov,
             inv_hessian,
-            n,
-            N,
             coord=coord,
-            clip=True,
         )
         return ppi_ols_pointestimate_cluster(
             X,
@@ -426,8 +424,6 @@ def ppi_ols_ci_cluster(
         lam = _calc_lam_opt(
             grads_cov,
             inv_hessian,
-            n,
-            N,
             coord=coord,
             clip=True,
         )
@@ -457,6 +453,34 @@ def ppi_ols_ci_cluster(
     )
 
 
+# def _get_grad_covariance_matrix(
+#     grads,
+#     grads_hat,
+#     grads_hat_unlabeled,
+#     group=None,
+#     group_unlabeled=None,
+# ):
+#     grads = reshape_to_2d(grads)
+#     grads_hat = reshape_to_2d(grads_hat)
+#     grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
+#     grads_cent = grads - grads.mean(axis=0)
+#     grads_hat_cent = grads_hat - grads_hat.mean(axis=0)
+#     grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(axis=0)
+
+#     combined_grads = np.hstack(
+#         [
+#             np.vstack([grads_cent, np.zeros_like(grads_hat_unlabeled)]),
+#             np.vstack([grads_hat_cent, np.zeros_like(grads_hat_unlabeled)]),
+#             np.vstack([np.zeros_like(grads), grads_hat_unlabeled_cent]),
+#         ]
+#     )
+#     if (group is not None) and (group_unlabeled is not None):
+#         combined_groups = np.concatenate([group, group_unlabeled])
+#         covariance = cov_cluster(combined_grads, combined_groups)
+#     else:
+#         covariance = np.dot(combined_grads.T, combined_grads)
+#     return covariance
+
 def _get_grad_covariance_matrix(
     grads,
     grads_hat,
@@ -464,6 +488,10 @@ def _get_grad_covariance_matrix(
     group=None,
     group_unlabeled=None,
 ):
+    n = len(grads)
+    N = len(grads_hat_unlabeled)
+    r = n/N
+    
     grads = reshape_to_2d(grads)
     grads_hat = reshape_to_2d(grads_hat)
     grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
@@ -474,8 +502,7 @@ def _get_grad_covariance_matrix(
     combined_grads = np.hstack(
         [
             np.vstack([grads_cent, np.zeros_like(grads_hat_unlabeled)]),
-            np.vstack([grads_hat_cent, np.zeros_like(grads_hat_unlabeled)]),
-            np.vstack([np.zeros_like(grads), grads_hat_unlabeled_cent]),
+            np.vstack([grads_hat_cent, -r * grads_hat_unlabeled_cent]),
         ]
     )
     if (group is not None) and (group_unlabeled is not None):
@@ -485,26 +512,17 @@ def _get_grad_covariance_matrix(
         covariance = np.dot(combined_grads.T, combined_grads)
     return covariance
 
-
 def _calc_lam_opt(
     grads_cov,
     inv_hessian,
-    n,
-    N,
     coord=None,
     clip=False,
     optim_mode="overall",
 ):
     d = inv_hessian.shape[0]
     vhat = inv_hessian if coord is None else inv_hessian[coord, :]
-    numerator_ = (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d]) / n**2 - (
-        grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
-    ) / n / N
-    denominator_ = 2 * (
-        grads_cov[d : (2 * d), d : (2 * d)] / n**2
-        + grads_cov[2 * d :, 2 * d :] / N**2
-        - (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)]) / n / N
-    )
+    numerator_ = grads_cov[:d, d:] + grads_cov[d:,:d] 
+    denominator_ = 2 * grads_cov[d:, d:]
     if optim_mode == "overall":
         num = (
             np.trace(vhat @ numerator_ @ vhat)
@@ -530,23 +548,65 @@ def _calc_lam_opt(
         lam = np.clip(lam, 0, 1)
     return lam
 
+# def _calc_lam_opt(
+#     grads_cov,
+#     inv_hessian,
+#     coord=None,
+#     clip=False,
+#     optim_mode="overall",
+# ):
+#     d = inv_hessian.shape[0]
+#     vhat = inv_hessian if coord is None else inv_hessian[coord, :]
+#     numerator_ = (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d]) / n**2 - (
+#         grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
+#     ) 
+#     denominator_ = 2 * (
+#         grads_cov[d : (2 * d), d : (2 * d)] / n**2
+#         + grads_cov[2 * d :, 2 * d :] / N**2
+#         - (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)]) / n / N
+#     )
+#     if optim_mode == "overall":
+#         num = (
+#             np.trace(vhat @ numerator_ @ vhat)
+#             if coord is None
+#             else vhat @ numerator_ @ vhat
+#         )
+#         denom = (
+#             np.trace(vhat @ denominator_ @ vhat)
+#             if coord is None
+#             else vhat @ denominator_ @ vhat
+#         )
+#         lam = num / denom
+#         lam = lam.item()
+#     elif optim_mode == "element":
+#         num = np.diag(vhat @ numerator_ @ vhat)
+#         denom = np.diag(vhat @ denominator_ @ vhat)
+#         lam = num / denom
+#     else:
+#         raise ValueError(
+#             "Invalid value for optim_mode. Must be either 'overall' or 'element'."
+#         )
+#     if clip:
+#         lam = np.clip(lam, 0, 1)
+#     return lam
 
-def _ppi_cov(
-    grads_cov,
-    inv_hessian,
-    lam,
-    n,
-    N,
-):
-    d = inv_hessian.shape[0]
-    var_rectifier = (
-        grads_cov[:d, :d]
-        + lam**2 * grads_cov[d : (2 * d), d : (2 * d)]
-        - lam * (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d])
-    )
-    var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
-    cov_rectifier_imputed = lam * (
-        grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
-    ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
-    meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
-    return inv_hessian @ meat @ inv_hessian
+
+# def _ppi_cov(
+#     grads_cov,
+#     inv_hessian,
+#     lam,
+#     n,
+#     N,
+# ):
+#     d = inv_hessian.shape[0]
+#     var_rectifier = (
+#         grads_cov[:d, :d]
+#         + lam**2 * grads_cov[d : (2 * d), d : (2 * d)]
+#         - lam * (grads_cov[:d, d : (2 * d)] + grads_cov[d : (2 * d), :d])
+#     )
+#     var_imputed = lam**2 * grads_cov[2 * d :, 2 * d :]
+#     cov_rectifier_imputed = lam * (
+#         grads_cov[:d, 2 * d :] + grads_cov[2 * d :, :d]
+#     ) - lam**2 * (grads_cov[d : (2 * d), 2 * d :] + grads_cov[2 * d :, d : (2 * d)])
+#     meat = var_rectifier / n**2 + var_imputed / N**2 + cov_rectifier_imputed / n / N
+#     return inv_hessian @ meat @ inv_hessian
