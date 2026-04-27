@@ -527,13 +527,13 @@ def _get_grad_covariance_matrix(
     grads = reshape_to_2d(grads)
     grads_hat = reshape_to_2d(grads_hat)
     grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
-    grads_cent = grads - grads.mean(axis=0)
-    grads_hat_cent = grads_hat - grads_hat.mean(axis=0)
-    grads_hat_unlabeled_cent = grads_hat_unlabeled - grads_hat_unlabeled.mean(axis=0)
+    mean_grad_hat = (grads_hat.mean(axis=0)*r + grads_hat_unlabeled.mean(axis=0))/(r+1)
+    grads_hat_cent = grads_hat - mean_grad_hat
+    grads_hat_unlabeled_cent = grads_hat_unlabeled - mean_grad_hat
 
     combined_grads = np.hstack(
         [
-            np.vstack([grads_cent, np.zeros_like(grads_hat_unlabeled)]),
+            np.vstack([grads, np.zeros_like(grads_hat_unlabeled)]),
             np.vstack([grads_hat_cent, -r * grads_hat_unlabeled_cent]),
         ]
     )
