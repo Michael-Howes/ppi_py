@@ -38,7 +38,7 @@ def generate_cluster(
             "Invalid value for covariance_type. Must be either 'equi' or 'AR'."
         )
 
-    mean = np.full(cluster_size, theta)
+    mean = np.arange(1, cluster_size+1) * theta / ((cluster_size+1)/2)
 
     Y = rng.multivariate_normal(mean=mean, cov=sigma, size=1)
     noise_sd = np.sqrt(1 - ppi_correlation**2)
@@ -238,7 +238,7 @@ def test_ppi_mean_cluster_coverage():
     rho = 0.5
     ppi_correlation = 0.5
     num_clusters = 400
-    covariance_type = "AR"
+    covariance_type = "equi"
 
     includeds_cluster = np.zeros_like(alphas, dtype = int)
     includeds_ppi = np.zeros_like(alphas, dtype = int)
