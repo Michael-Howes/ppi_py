@@ -3,6 +3,7 @@ import numpy as np
 from numba import njit
 from scipy.stats import norm, binom
 from scipy.optimize import brentq, minimize
+from scipy.linalg import sqrtm, inv
 from statsmodels.regression.linear_model import OLS, WLS
 from statsmodels.stats.weightstats import (
     _zconfint_generic,
@@ -73,6 +74,7 @@ def ppi_mean_pointestimate_cluster(
     group=None,
     group_unlabeled=None,
     lam_optim_mode="overall",
+    cr2=False,
 ):
     """Computes the prediction-powered point estimate of the d-dimensional mean.
 
@@ -107,12 +109,23 @@ def ppi_mean_pointestimate_cluster(
 
     if lam is None:
         ppi_pointest = (w_unlabeled * Yhat_unlabeled).mean(0) + (w * (Y - Yhat)).mean(0)
-        grads = w * (Y - ppi_pointest)
-        grads_hat = w * (Yhat - ppi_pointest)
-        grads_hat_unlabeled = w_unlabeled * (Yhat_unlabeled - ppi_pointest)
         inv_hessian = np.eye(d)
+        residuals = w*(Y - (w*Y).mean(0))
+        residuals_hat = w*(Yhat - (w*Yhat).mean(0))
+        residuals_hat_unlabeled = (
+            w_unlabeled*(Yhat_unlabeled - (w_unlabeled*Yhat_unlabeled).mean(0))
+        )
+        X = np.ones(n)
+        X_unlabeled = np.ones(N)
         grads_cov = _get_grad_covariance_matrix(
-            grads, grads_hat, grads_hat_unlabeled, group, group_unlabeled
+            residuals = residuals,
+            residuals_hat = residuals_hat,
+            residuals_hat_unlabeled = residuals_hat_unlabeled,
+            X=X,
+            X_unlabeled=X_unlabeled,
+            group=group,
+            group_unlabeled=group_unlabeled,
+            cr2 = cr2
         )
         lam = _calc_lam_opt(
             grads_cov,
@@ -120,7 +133,7 @@ def ppi_mean_pointestimate_cluster(
             coord=coord,
             optim_mode=lam_optim_mode,
         )
-        return ppi.ppi_mean_pointestimate(
+        return ppi_mean_pointestimate_cluster(
             Y,
             Yhat,
             Yhat_unlabeled,
@@ -128,6 +141,9 @@ def ppi_mean_pointestimate_cluster(
             coord=coord,
             w=w,
             w_unlabeled=w_unlabeled,
+            group=group,
+            group_unlabeled = group_unlabeled,
+            cr2=cr2
         )
     else:
         return (w_unlabeled * lam * Yhat_unlabeled).mean(axis=0) + (
@@ -148,6 +164,7 @@ def ppi_mean_ci_cluster(
     group=None,
     group_unlabeled=None,
     lam_optim_mode="overall",
+    cr2=False,
 ):
     """Computes the prediction-powered confidence interval for a d-dimensional mean.
 
@@ -190,13 +207,24 @@ def ppi_mean_ci_cluster(
             group=group,
             group_unlabeled=group_unlabeled,
         )
-        grads = w * (Y - ppi_pointest)
-        grads_hat = w * (Yhat - ppi_pointest)
-        grads_hat_unlabeled = w_unlabeled * (Yhat_unlabeled - ppi_pointest)
-        inv_hessian = np.eye(d)
-        grads_cov = _get_grad_covariance_matrix(
-            grads, grads_hat, grads_hat_unlabeled, group, group_unlabeled
+        residuals = w*(Y - (w*Y).mean(0))
+        residuals_hat = w*(Yhat - (w*Yhat).mean(0))
+        residuals_hat_unlabeled = (
+            w_unlabeled*(Yhat_unlabeled - (w_unlabeled*Yhat_unlabeled).mean(0))
         )
+        X = np.ones(n)
+        X_unlabeled = np.ones(N)
+        grads_cov = _get_grad_covariance_matrix(
+            residuals = residuals,
+            residuals_hat = residuals_hat,
+            residuals_hat_unlabeled = residuals_hat_unlabeled,
+            X=X,
+            X_unlabeled=X_unlabeled,
+            group=group,
+            group_unlabeled=group_unlabeled,
+            cr2 = cr2
+        )
+        inv_hessian = np.eye(d)
         lam = _calc_lam_opt(
             grads_cov,
             inv_hessian,
@@ -216,6 +244,7 @@ def ppi_mean_ci_cluster(
             group=group,
             group_unlabeled=group_unlabeled,
             lam_optim_mode=lam_optim_mode,
+            cr2=cr2
         )
 
     ppi_pointest = ppi_mean_pointestimate_cluster(
@@ -229,13 +258,31 @@ def ppi_mean_ci_cluster(
         group=group,
         group_unlabeled=group_unlabeled,
         lam_optim_mode=lam_optim_mode,
+        cr2=cr2
     )
-    grads = w * (Y - ppi_pointest)
-    grads_hat = w * (Yhat - ppi_pointest)
-    grads_hat_unlabeled = w_unlabeled * (Yhat_unlabeled - ppi_pointest)
-    inv_hessian = np.eye(d)
+    residuals = w*(Y - (w*Y).mean(0))
+    residuals_hat = w*(Yhat - (w*Yhat).mean(0))
+    residuals_hat_unlabeled = (
+        w_unlabeled*(Yhat_unlabeled - (w_unlabeled*Yhat_unlabeled).mean(0))
+    )
+    X = np.ones(n)
+    X_unlabeled = np.ones(N)
     grads_cov = _get_grad_covariance_matrix(
-        grads, grads_hat, grads_hat_unlabeled, group, group_unlabeled
+        residuals = residuals,
+        residuals_hat = residuals_hat,
+        residuals_hat_unlabeled = residuals_hat_unlabeled,
+        X=X,
+        X_unlabeled=X_unlabeled,
+        group=group,
+        group_unlabeled=group_unlabeled,
+        cr2 = cr2
+    )
+    inv_hessian = np.eye(d)
+    lam = _calc_lam_opt(
+        grads_cov,
+        inv_hessian,
+        coord=coord,
+        optim_mode=lam_optim_mode,
     )
 
     se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam))) / n
@@ -265,6 +312,7 @@ def ppi_ols_pointestimate_cluster(
     w_unlabeled=None,
     group=None,
     group_unlabeled=None,
+    cr2=False,
 ):
     """Computes the prediction-powered point estimate of the OLS coefficients.
 
@@ -305,23 +353,34 @@ def ppi_ols_pointestimate_cluster(
     ppi_pointest = imputed_theta + rectifier
 
     if lam is None:
-        grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
-            ppi_pointest,
-            X.astype(float),
-            Y,
-            Yhat,
-            X_unlabeled.astype(float),
-            Yhat_unlabeled,
-            w=w,
-            w_unlabeled=w_unlabeled,
-            use_unlabeled=use_unlabeled,
-        )
+        # resid = lambda M, v: v - M @ np.linalg.lstsq(M, v, rcond=None)[0]
+        # residuals = resid(X, Y)
+        # residuals_hat = resid(X, Yhat)
+        # residuals_hat_unlabeled = resid(X_unlabeled, Yhat_unlabeled)
+
+        residuals = Y - X@ppi_pointest
+        residuals_hat = Yhat - X@ppi_pointest
+        residuals_hat_unlabeled = Yhat_unlabeled - X_unlabeled@ppi_pointest
+        _, _, _, inv_hessian = ppi._ols_get_stats(
+                ppi_pointest,
+                X.astype(float),
+                Y,
+                Yhat,
+                X_unlabeled.astype(float),
+                Yhat_unlabeled,
+                w=w,
+                w_unlabeled=w_unlabeled,
+                use_unlabeled=use_unlabeled,
+            )
         grads_cov = _get_grad_covariance_matrix(
-            grads=grads,
-            grads_hat=grads_hat,
-            grads_hat_unlabeled=grads_hat_unlabeled,
+            residuals = residuals,
+            residuals_hat = residuals_hat,
+            residuals_hat_unlabeled = residuals_hat_unlabeled,
+            X = X,
+            X_unlabeled = X_unlabeled,
             group=group,
             group_unlabeled=group_unlabeled,
+            cr2=cr2
         )
         lam = _calc_lam_opt(
             grads_cov,
@@ -338,6 +397,9 @@ def ppi_ols_pointestimate_cluster(
             coord=coord,
             w=w,
             w_unlabeled=w_unlabeled,
+            group=group,
+            group_unlabeled=group_unlabeled,
+            cr2=cr2
         )
     else:
         return ppi_pointest
@@ -357,6 +419,7 @@ def ppi_ols_ci_cluster(
     w_unlabeled=None,
     group=None,
     group_unlabeled=None,
+    cr2=False,
 ):
     """Computes the prediction-powered confidence interval for the OLS coefficients using the PPI++ algorithm from `[ADZ23] <https://arxiv.org/abs/2311.01453>`__.
 
@@ -399,26 +462,37 @@ def ppi_ols_ci_cluster(
         w=w,
         w_unlabeled=w_unlabeled,
         group=group,
-        group_unlabeled=group_unlabeled
+        group_unlabeled=group_unlabeled,
+        cr2=cr2,
     )
 
-    grads, grads_hat, grads_hat_unlabeled, inv_hessian = ppi._ols_get_stats(
-        ppi_pointest,
-        X.astype(float),
-        Y,
-        Yhat,
-        X_unlabeled.astype(float),
-        Yhat_unlabeled,
-        w=w,
-        w_unlabeled=w_unlabeled,
-        use_unlabeled=use_unlabeled,
-    )
+    # resid = lambda M, v: v - M @ np.linalg.lstsq(M, v, rcond=None)[0]
+    # residuals = resid(X, Y)
+    # residuals_hat = resid(X, Yhat)
+    # residuals_hat_unlabeled = resid(X_unlabeled, Yhat_unlabeled)
+    residuals = Y - X@ppi_pointest
+    residuals_hat = Yhat - X@ppi_pointest
+    residuals_hat_unlabeled = Yhat_unlabeled - X_unlabeled@ppi_pointest
+    _, _, _, inv_hessian = ppi._ols_get_stats(
+            ppi_pointest,
+            X.astype(float),
+            Y,
+            Yhat,
+            X_unlabeled.astype(float),
+            Yhat_unlabeled,
+            w=w,
+            w_unlabeled=w_unlabeled,
+            use_unlabeled=use_unlabeled,
+        )
     grads_cov = _get_grad_covariance_matrix(
-        grads=grads,
-        grads_hat=grads_hat,
-        grads_hat_unlabeled=grads_hat_unlabeled,
+        residuals = residuals,
+        residuals_hat = residuals_hat,
+        residuals_hat_unlabeled = residuals_hat_unlabeled,
+        X = X,
+        X_unlabeled = X_unlabeled,
         group=group,
         group_unlabeled=group_unlabeled,
+        cr2=cr2
     )
     if lam is None:
         lam = _calc_lam_opt(
@@ -440,7 +514,8 @@ def ppi_ols_ci_cluster(
             w=w,
             w_unlabeled=w_unlabeled,
             group=group,
-            group_unlabeled=group_unlabeled
+            group_unlabeled=group_unlabeled,
+            cr2=cr2
         )
 
     se = np.sqrt(np.diag(_ppi_cov(grads_cov, inv_hessian, lam))) / n
@@ -513,36 +588,110 @@ def ppi_ols_ci_cluster(
 #     return covariance
 
 
+
+def _cr2_adjustment(X, residual, group):
+    """Returns M_g^{-1/2} @ u_g for every cluster g, in the original row order,
+    with M_g = I - X_g (X'X)^{-1} X_g'."""
+    B_inv = np.linalg.inv(X.T @ X)
+    out = np.empty_like(residual)
+    for g in np.unique(group):
+        idx = group == g
+        Xg = X[idx]
+        M_g = np.eye(Xg.shape[0]) - Xg @ B_inv @ Xg.T
+        sqrt_inv = np.real_if_close(
+            inv(sqrtm(M_g))
+        )
+        out[idx] = sqrt_inv @ residual[idx]
+    return out
+
 def _get_grad_covariance_matrix(
-    grads,
-    grads_hat,
-    grads_hat_unlabeled,
+    residuals,
+    residuals_hat,
+    residuals_hat_unlabeled,
+    X,
+    X_unlabeled,
     group=None,
     group_unlabeled=None,
+    cr2 = False
 ):
-    n = len(grads)
-    N = len(grads_hat_unlabeled)
+    n = len(residuals)
+    N = len(residuals_hat_unlabeled)
     r = n/N
     
-    grads = reshape_to_2d(grads)
-    grads_hat = reshape_to_2d(grads_hat)
-    grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
-    mean_grad_hat = (grads_hat.mean(axis=0)*r + grads_hat_unlabeled.mean(axis=0))/(r+1)
-    grads_hat_cent = grads_hat - mean_grad_hat
-    grads_hat_unlabeled_cent = grads_hat_unlabeled - mean_grad_hat
+    residuals = reshape_to_2d(residuals)
+    residuals_hat = reshape_to_2d(residuals_hat)
+    residuals_hat_unlabeled = reshape_to_2d(residuals_hat_unlabeled)
+    X = reshape_to_2d(X)
+    X_unlabeled = reshape_to_2d(X_unlabeled)
+
+    if (group is None) or (group_unlabeled is None):
+        group, group_unlabeled = np.arange(n), np.arange(n, n + N)  # HC2 analogue
+    # joint factorization so labeled/unlabeled ids share one id space
+    _, codes = np.unique(np.concatenate([group, group_unlabeled]), return_inverse=True)
+    group, group_unlabeled = codes[:n], codes[n:]
+
+    if cr2:
+        residuals = _cr2_adjustment(X, residuals, group)
+        residuals_hat = _cr2_adjustment(X, residuals_hat, group)
+        residuals_hat_unlabeled = _cr2_adjustment(
+            X_unlabeled, residuals_hat_unlabeled, group_unlabeled
+        )
+        grads = X * residuals
+        grads_hat = X * residuals_hat
+        grads_hat_unlabeled = X_unlabeled * residuals_hat_unlabeled
+    else:   
+        grads = X * residuals
+        grads_hat = X * residuals_hat
+        grads_hat_unlabeled = X_unlabeled * residuals_hat_unlabeled
+
+        mean_grad_hat = (grads_hat.mean(axis=0)*r + grads_hat_unlabeled.mean(axis=0))/(r+1)
+        grads_hat = grads_hat - mean_grad_hat
+        grads_hat_unlabeled = grads_hat_unlabeled - mean_grad_hat
+    
 
     combined_grads = np.hstack(
         [
             np.vstack([grads, np.zeros_like(grads_hat_unlabeled)]),
-            np.vstack([grads_hat_cent, -r * grads_hat_unlabeled_cent]),
+            np.vstack([grads_hat, -r * grads_hat_unlabeled]),
         ]
     )
-    if (group is not None) and (group_unlabeled is not None):
-        combined_groups = np.concatenate([group, group_unlabeled])
-        covariance = cov_cluster(combined_grads, combined_groups)
-    else:
-        covariance = np.dot(combined_grads.T, combined_grads)
-    return covariance
+    combined_groups = np.concatenate([group, group_unlabeled])
+    return cov_cluster(combined_grads, combined_groups)
+
+# def _get_grad_covariance_matrix(
+#     grads,
+#     grads_hat,
+#     grads_hat_unlabeled,
+#     group=None,
+#     group_unlabeled=None,
+# ):
+#     n = len(grads)
+#     N = len(grads_hat_unlabeled)
+#     r = n/N
+    
+#     grads = reshape_to_2d(grads)
+#     grads_hat = reshape_to_2d(grads_hat)
+#     grads_hat_unlabeled = reshape_to_2d(grads_hat_unlabeled)
+#     mean_grad_hat = (grads_hat.mean(axis=0)*r + grads_hat_unlabeled.mean(axis=0))/(r+1)
+#     grads_hat_cent = grads_hat - mean_grad_hat
+#     grads_hat_unlabeled_cent = grads_hat_unlabeled - mean_grad_hat
+
+#     combined_grads = np.hstack(
+#         [
+#             np.vstack([grads, np.zeros_like(grads_hat_unlabeled)]),
+#             np.vstack([grads_hat_cent, -r * grads_hat_unlabeled_cent]),
+#         ]
+#     )
+#     if (group is None) or (group_unlabeled is None):
+#         group, group_unlabeled = np.arange(n), np.arange(n, n + N) 
+#     if (group is not None) and (group_unlabeled is not None):
+#         combined_groups = np.concatenate([group, group_unlabeled])
+#         covariance = cov_cluster(combined_grads, combined_groups)
+#     else:
+#         covariance = np.dot(combined_grads.T, combined_grads)
+#     return covariance
+
+
 
 def _calc_lam_opt(
     grads_cov,
