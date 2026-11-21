@@ -589,20 +589,29 @@ def ppi_ols_ci_cluster(
 
 
 
-def _cr2_adjustment(X, residual, group):
-    """Returns M_g^{-1/2} @ u_g for every cluster g, in the original row order,
-    with M_g = I - X_g (X'X)^{-1} X_g'."""
-    B_inv = np.linalg.inv(X.T @ X)
-    out = np.empty_like(residual)
-    for g in np.unique(group):
-        idx = group == g
-        Xg = X[idx]
-        M_g = np.eye(Xg.shape[0]) - Xg @ B_inv @ Xg.T
-        sqrt_inv = np.real_if_close(
-            inv(sqrtm(M_g))
-        )
-        out[idx] = sqrt_inv @ residual[idx]
-    return out
+def _cr2_adjustment(X, residual, group, tol=1e-8):
+    """M_g^{-1/2} @ u_g for every cluster, in original row order (X, residual, group all shape (n,)).
+    `group` must hold integer codes 0..G-1 (e.g. from np.unique(..., return_inverse=True))."""
+    X = np.asarray(X, float)
+    u = np.asarray(residual, float)
+    X = np.squeeze(X)
+    u = np.squeeze(u)
+    G = group.max() + 1
+    print(X.shape)
+    print(u.shape)
+    S = np.sum(X**2)
+    S_g = np.bincount(group, weights=X**2, minlength=G)
+    T_g = np.bincount(group, weights=X * u, minlength=G)
+
+    lev = S_g / S                       # leverage of each cluster
+    if np.any(1 - lev < tol):
+        raise ValueError("CR2 undefined: a cluster has leverage ~1.")
+    c = 1 / np.sqrt(1 - lev)
+
+    # (c_g - 1) / S_g, with the S_g = 0 case (cluster with all x = 0) set to 0
+    coef = np.divide(c - 1, S_g, out=np.zeros(G), where=S_g > 0)
+    grads = u + (coef * T_g)[group] * X
+    return reshape_to_2d(grads)
 
 def _get_grad_covariance_matrix(
     residuals,
